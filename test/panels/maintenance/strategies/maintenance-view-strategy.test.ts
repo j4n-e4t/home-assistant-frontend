@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterLowBatteryEntities,
   filterProblemEntities,
+  findMaintenanceEntities,
   MaintenanceViewStrategy,
 } from "../../../../src/panels/maintenance/strategies/maintenance-view-strategy";
 import {
@@ -345,6 +346,55 @@ describe("MaintenanceViewStrategy.generate", () => {
           name: { type: "entity" },
         },
       },
+    ]);
+  });
+});
+
+describe("findMaintenanceEntities", () => {
+  it.each([
+    ["80", false],
+    ["80", true],
+    ["unavailable", false],
+    ["unavailable", true],
+  ])("prefers the battery level (%s, hidden: %s)", (level, hidden) => {
+    const rows = [
+      ["sensor.level", level, "battery", "both"],
+      ["binary_sensor.battery", "off", "battery", "both"],
+      ["binary_sensor.problem", "off", "problem", "both"],
+      ["binary_sensor.only", "off", "battery", "only"],
+      ["binary_sensor.unassigned", "off", "battery", undefined],
+    ] as const;
+    const hass = createMockHass(
+      Object.fromEntries(
+        rows.map(([id, state, device_class]) => [
+          id,
+          createMockEntityState(id, state, { device_class }),
+        ])
+      ),
+      {
+        entities: Object.fromEntries(
+          rows.map(([id, , , device_id]) => [
+            id,
+            mockEntity({
+              entity_id: id,
+              device_id,
+              entity_category: "diagnostic",
+            }),
+          ])
+        ),
+      }
+    );
+
+    expect(
+      findMaintenanceEntities(
+        hass,
+        hidden ? ["sensor.level"] : undefined
+      ).sort()
+    ).toEqual([
+      "binary_sensor.only",
+      "binary_sensor.problem",
+      "binary_sensor.unassigned",
+      ...(hidden ? [] : ["sensor.level"]),
     ]);
   });
 });

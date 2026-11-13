@@ -3,6 +3,7 @@ import { customElement } from "lit/decorators";
 import memoizeOne from "memoize-one";
 import { getAreasFloorHierarchy } from "../../../common/areas/areas-floor-hierarchy";
 import {
+  excludeEntities,
   findFilteredEntities,
   generateEntityFilter,
   type EntityFilter,
@@ -43,8 +44,29 @@ export const maintenanceEntityFilters: EntityFilter[] = [
 export const findMaintenanceEntities = (
   sources: EntityFilterSources,
   hiddenEntities?: string[]
-): string[] =>
-  findFilteredEntities(sources, maintenanceEntityFilters, hiddenEntities);
+): string[] => {
+  const entityIds = findFilteredEntities(sources, maintenanceEntityFilters);
+  const devicesWithBatteryLevel = new Set(
+    entityIds
+      .filter((id) => computeDomain(id) === "sensor")
+      .map((id) => sources.entities[id]?.device_id)
+  );
+
+  // A device's battery level supersedes its battery binary sensor. Select
+  // before exclusions so hiding the level does not reveal its binary sensor.
+  return excludeEntities(
+    entityIds.filter((id) => {
+      const deviceId = sources.entities[id]?.device_id;
+      return (
+        deviceId === undefined ||
+        computeDomain(id) !== "binary_sensor" ||
+        sources.states[id].attributes.device_class !== "battery" ||
+        !devicesWithBatteryLevel.has(deviceId)
+      );
+    }),
+    hiddenEntities
+  );
+};
 
 const LOW_BATTERY_THRESHOLD = 20;
 
